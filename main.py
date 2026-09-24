@@ -9,7 +9,7 @@ from docx import Document
 # LOAD WORD KNOWLEDGE BASE
 # =========================
 
-doc = Document("KHT_Knowledge_Base.docx")
+doc = Document("/content/KHT Operation knowledge sample data.docx")
 
 sections = {
     "HSD Truck Loading": "",
@@ -49,7 +49,7 @@ for paragraph in doc.paragraphs:
 # LOAD EXCEL DATA
 # =========================
 
-excel_data = pd.read_excel("KHT_Sample_Data.xlsx")
+excel_data = pd.read_excel("/content/Permits Sample Data.xlsx")
 
 
 # =========================
