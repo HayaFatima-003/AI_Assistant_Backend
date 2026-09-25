@@ -288,7 +288,7 @@ def search_sections(question):
         top_sentences = [
             sentence
             for score, sentence
-            in scored_sentences[:5]
+            in scored_sentences[:10]
         ]
 
         answer = " ".join(
