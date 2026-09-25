@@ -56,24 +56,35 @@ excel_data = pd.read_excel("Permits Sample Data.xlsx")
 # WORD SEARCH
 # =========================
 
+
+# =========================
+# WORD SEARCH
+# =========================
+
+import re
+
+
 def search_sections(question):
 
-    question = question.lower()
+    question_lower = question.lower()
 
     keywords = {
         "HSD Truck Loading": [
             "hsd", "truck", "loading", "load",
-            "diesel", "tank truck"
+            "diesel", "tank truck", "ppe",
+            "hazard", "spill", "earthing"
         ],
 
         "HSD Decanting": [
             "decant", "decanting", "transfer",
-            "tanker", "tote", "drum"
+            "tanker", "tote", "drum",
+            "ppe", "hazard", "spill"
         ],
 
         "AOPS Testing": [
             "aops", "overfill", "alarm",
-            "trip", "interlock", "shutdown"
+            "trip", "interlock", "shutdown",
+            "testing"
         ],
 
         "Permit Requirements": [
@@ -87,7 +98,7 @@ def search_sections(question):
             "hse", "ppe", "toolbox",
             "housekeeping", "spill",
             "incident", "near miss",
-            "safety"
+            "safety", "hazard"
         ],
 
         "Equipment Descriptions": [
@@ -104,20 +115,113 @@ def search_sections(question):
         ]
     }
 
+    # -------------------------
+    # Find best section
+    # -------------------------
+
     scores = {}
 
     for section, words in keywords.items():
-        scores[section] = sum(
-            1 for word in words
-            if word in question
-        )
+
+        score = 0
+
+        for word in words:
+            if word in question_lower:
+                score += 1
+
+        scores[section] = score
 
     best_section = max(scores, key=scores.get)
 
     if scores[best_section] == 0:
         return None, None
 
-    return best_section, sections[best_section]
+    content = sections[best_section]
+
+    # -------------------------
+    # Break content into sentences
+    # -------------------------
+
+    sentences = re.split(
+        r'(?<=[.!?])\s+',
+        content.strip()
+    )
+
+    # -------------------------
+    # Remove common words
+    # -------------------------
+
+    stop_words = {
+        "what", "is", "are", "the", "a", "an",
+        "for", "of", "to", "in", "on", "and",
+        "or", "how", "does", "do", "can",
+        "should", "be", "required", "tell",
+        "me", "please", "about"
+    }
+
+    question_words = set(
+        re.findall(r'\b[a-zA-Z0-9]+\b', question_lower)
+    )
+
+    question_words -= stop_words
+
+    # -------------------------
+    # Score each sentence
+    # -------------------------
+
+    scored_sentences = []
+
+    for sentence in sentences:
+
+        sentence_lower = sentence.lower()
+
+        sentence_words = set(
+            re.findall(
+                r'\b[a-zA-Z0-9]+\b',
+                sentence_lower
+            )
+        )
+
+        overlap = question_words.intersection(
+            sentence_words
+        )
+
+        score = len(overlap)
+
+        if score > 0:
+            scored_sentences.append(
+                (score, sentence.strip())
+            )
+
+    # -------------------------
+    # Sort most relevant first
+    # -------------------------
+
+    scored_sentences.sort(
+        key=lambda x: x[0],
+        reverse=True
+    )
+
+    # -------------------------
+    # Return concise answer
+    # -------------------------
+
+    if scored_sentences:
+
+        top_sentences = [
+            sentence
+            for score, sentence
+            in scored_sentences[:3]
+        ]
+
+        answer = " ".join(top_sentences)
+
+    else:
+
+        answer = content
+
+    return best_section, answer
+  
 
 
 # =========================
