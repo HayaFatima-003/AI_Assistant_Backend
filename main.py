@@ -1,15 +1,20 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from docx import Document
 import os
+import re
 from google import genai
 
+
+# =========================
+# GEMINI CLIENT
+# =========================
 
 client = genai.Client(
     api_key=os.getenv("GEMINI_API_KEY")
 )
+
 
 # =========================
 # LOAD WORD KNOWLEDGE BASE
@@ -30,20 +35,27 @@ sections = {
 current_section = None
 
 for paragraph in doc.paragraphs:
+
     text = paragraph.text.strip()
 
     if "Operation 1: HSD Truck Loading" in text:
         current_section = "HSD Truck Loading"
+
     elif "Operation 2: HSD Decanting" in text:
         current_section = "HSD Decanting"
+
     elif "Operation 3: AOPS Testing" in text:
         current_section = "AOPS Testing"
+
     elif "Operation 4: Permit Requirements" in text:
         current_section = "Permit Requirements"
+
     elif "Operation 5: Basic HSE" in text:
         current_section = "Basic HSE"
+
     elif "Operation 6: Equipment Descriptions" in text:
         current_section = "Equipment Descriptions"
+
     elif "Operation 7: Emergency Procedures" in text:
         current_section = "Emergency Procedures"
 
@@ -55,74 +67,103 @@ for paragraph in doc.paragraphs:
 # LOAD EXCEL DATA
 # =========================
 
-excel_data = pd.read_excel("Permits Sample Data.xlsx")
+excel_data = pd.read_excel("Permit Sample Data.xlsx")
 
 
 # =========================
 # WORD SEARCH
 # =========================
-
-
-# =========================
-# WORD SEARCH
-# =========================
-
-import re
-
 
 def search_sections(question):
 
     question_lower = question.lower()
 
     keywords = {
+
         "HSD Truck Loading": [
-            "hsd", "truck", "loading", "load",
-            "diesel", "tank truck", "ppe",
-            "hazard", "spill", "earthing"
+            "hsd",
+            "truck",
+            "loading",
+            "load",
+            "diesel",
+            "tank truck",
+            "ppe",
+            "hazard",
+            "spill",
+            "earthing"
         ],
 
         "HSD Decanting": [
-            "decant", "decanting", "transfer",
-            "tanker", "tote", "drum",
-            "ppe", "hazard", "spill"
+            "decant",
+            "decanting",
+            "transfer",
+            "tanker",
+            "tote",
+            "drum",
+            "ppe",
+            "hazard",
+            "spill"
         ],
 
         "AOPS Testing": [
-            "aops", "overfill", "alarm",
-            "trip", "interlock", "shutdown",
+            "aops",
+            "overfill",
+            "alarm",
+            "trip",
+            "interlock",
+            "shutdown",
             "testing"
         ],
 
         "Permit Requirements": [
-            "permit", "ptw", "hot work",
-            "cold work", "confined space",
-            "excavation", "electrical",
-            "lifting", "loto"
+            "permit",
+            "ptw",
+            "hot work",
+            "cold work",
+            "confined space",
+            "excavation",
+            "electrical",
+            "lifting",
+            "loto"
         ],
 
         "Basic HSE": [
-            "hse", "ppe", "toolbox",
-            "housekeeping", "spill",
-            "incident", "near miss",
-            "safety", "hazard"
+            "hse",
+            "ppe",
+            "toolbox",
+            "housekeeping",
+            "spill",
+            "incident",
+            "near miss",
+            "safety",
+            "hazard"
         ],
 
         "Equipment Descriptions": [
-            "equipment", "pump", "valve",
-            "tank", "loading arm",
-            "hose", "meter", "filter",
+            "equipment",
+            "pump",
+            "valve",
+            "tank",
+            "loading arm",
+            "hose",
+            "meter",
+            "filter",
             "earthing"
         ],
 
         "Emergency Procedures": [
-            "emergency", "fire", "injury",
-            "evacuation", "alarm",
-            "spill response", "muster"
+            "emergency",
+            "fire",
+            "injury",
+            "evacuation",
+            "alarm",
+            "spill response",
+            "muster"
         ]
     }
 
     # -------------------------
-    # Find best section
+    # FIND BEST SECTION
     # -------------------------
 
     scores = {}
@@ -132,12 +173,16 @@ def search_sections(question):
         score = 0
 
         for word in words:
+
             if word in question_lower:
                 score += 1
 
         scores[section] = score
 
-    best_section = max(scores, key=scores.get)
+    best_section = max(
+        scores,
+        key=scores.get
+    )
 
     if scores[best_section] == 0:
         return None, None
@@ -145,7 +190,7 @@ def search_sections(question):
     content = sections[best_section]
 
     # -------------------------
-    # Break content into sentences
+    # SPLIT INTO SENTENCES
     # -------------------------
 
     sentences = re.split(
@@ -154,25 +199,47 @@ def search_sections(question):
     )
 
     # -------------------------
-    # Remove common words
+    # REMOVE COMMON WORDS
     # -------------------------
 
     stop_words = {
-        "what", "is", "are", "the", "a", "an",
-        "for", "of", "to", "in", "on", "and",
-        "or", "how", "does", "do", "can",
-        "should", "be", "required", "tell",
-        "me", "please", "about"
+        "what",
+        "is",
+        "are",
+        "the",
+        "a",
+        "an",
+        "for",
+        "of",
+        "to",
+        "in",
+        "on",
+        "and",
+        "or",
+        "how",
+        "does",
+        "do",
+        "can",
+        "should",
+        "be",
+        "required",
+        "tell",
+        "me",
+        "please",
+        "about"
     }
 
     question_words = set(
-        re.findall(r'\b[a-zA-Z0-9]+\b', question_lower)
+        re.findall(
+            r'\b[a-zA-Z0-9]+\b',
+            question_lower
+        )
     )
 
     question_words -= stop_words
 
     # -------------------------
-    # Score each sentence
+    # SCORE SENTENCES
     # -------------------------
 
     scored_sentences = []
@@ -195,12 +262,16 @@ def search_sections(question):
         score = len(overlap)
 
         if score > 0:
+
             scored_sentences.append(
-                (score, sentence.strip())
+                (
+                    score,
+                    sentence.strip()
+                )
             )
 
     # -------------------------
-    # Sort most relevant first
+    # SORT
     # -------------------------
 
     scored_sentences.sort(
@@ -209,7 +280,7 @@ def search_sections(question):
     )
 
     # -------------------------
-    # Return concise answer
+    # RETURN RELEVANT CONTENT
     # -------------------------
 
     if scored_sentences:
@@ -217,17 +288,18 @@ def search_sections(question):
         top_sentences = [
             sentence
             for score, sentence
-            in scored_sentences[:3]
+            in scored_sentences[:5]
         ]
 
-        answer = " ".join(top_sentences)
+        answer = " ".join(
+            top_sentences
+        )
 
     else:
 
         answer = content
 
     return best_section, answer
-  
 
 
 # =========================
@@ -236,98 +308,136 @@ def search_sections(question):
 
 def search_excel(question):
 
-    question = question.lower()
+    question_lower = question.lower()
 
-    if "hot work" in question:
-
-        result = excel_data[
-            excel_data["Permit Type"]
-            .astype(str)
-            .str.lower()
-            .str.contains("hot work", na=False)
-        ]
-
-    elif "cold work" in question:
+    if "hot work" in question_lower:
 
         result = excel_data[
             excel_data["Permit Type"]
             .astype(str)
             .str.lower()
-            .str.contains("cold work", na=False)
+            .str.contains(
+                "hot work",
+                na=False
+            )
         ]
 
-    elif "icc" in question:
+    elif "cold work" in question_lower:
+
+        result = excel_data[
+            excel_data["Permit Type"]
+            .astype(str)
+            .str.lower()
+            .str.contains(
+                "cold work",
+                na=False
+            )
+        ]
+
+    elif "icc" in question_lower:
 
         result = excel_data[
             excel_data["Certificate"]
             .fillna("")
             .astype(str)
             .str.lower()
-            .str.contains("icc", na=False)
+            .str.contains(
+                "icc",
+                na=False
+            )
         ]
 
-    elif "vec" in question:
+    elif "vec" in question_lower:
 
         result = excel_data[
             excel_data["Certificate"]
             .fillna("")
             .astype(str)
             .str.lower()
-            .str.contains("vec", na=False)
+            .str.contains(
+                "vec",
+                na=False
+            )
         ]
 
-    elif "loading bay" in question:
+    elif "loading bay" in question_lower:
 
         result = excel_data[
             excel_data["Area"]
             .astype(str)
             .str.lower()
-            .str.contains("loading bay", na=False)
+            .str.contains(
+                "loading bay",
+                na=False
+            )
         ]
 
-    elif "workshop" in question:
+    elif "workshop" in question_lower:
 
         result = excel_data[
             excel_data["Area"]
             .astype(str)
             .str.lower()
-            .str.contains("workshop", na=False)
+            .str.contains(
+                "workshop",
+                na=False
+            )
         ]
 
-    elif "process area" in question:
+    elif "process area" in question_lower:
 
         result = excel_data[
             excel_data["Area"]
             .astype(str)
             .str.lower()
-            .str.contains("process area", na=False)
+            .str.contains(
+                "process area",
+                na=False
+            )
         ]
 
     else:
+
         return None
 
     return result
+
+
 # =========================
 # GEMINI AI ANSWER
 # =========================
 
-def generate_ai_answer(question, context, source):
+def generate_ai_answer(
+    question,
+    context,
+    source
+):
 
     prompt = f"""
 You are the KHT AI Assistant.
 
-Answer the user's question using ONLY the information provided
-in the knowledge-base context below.
+Answer the user's question using ONLY the
+information provided in the knowledge-base context.
 
-Do not invent facts.
-Do not add information that is not present in the context.
-If the context does not contain enough information, say:
-"I could not find enough information in the KHT knowledge base."
+Rules:
 
-Give a concise, professional answer.
-Use bullet points when they make the answer clearer.
+1. Do not invent facts.
+2. Do not add information that is not present
+   in the provided context.
+3. If the context does not contain enough
+   information, say:
+   "I could not find enough information in the
+   KHT knowledge base."
+4. Keep the answer concise and professional.
+5. Use bullet points when useful.
+6. Do not repeat the entire procedure unless
+   the user specifically asks for the full procedure.
+7. Directly answer what the user asked.
+8. Treat the provided information as
+   training/sample information.
 
-Source: {source}
+Source:
+{source}
 
 Knowledge-base context:
 {context}
@@ -342,6 +452,7 @@ User question:
     )
 
     return response.text
+
 
 # =========================
 # MAIN BACKEND LOGIC
@@ -379,7 +490,14 @@ def ask_backend(question):
         "decanting"
     ]
 
-    if any(word in question_lower for word in excel_words):
+    # =========================
+    # EXCEL
+    # =========================
+
+    if any(
+        word in question_lower
+        for word in excel_words
+    ):
 
         result = search_excel(question)
 
@@ -393,29 +511,45 @@ def ask_backend(question):
                 )
             }
 
-    if any(word in question_lower for word in word_words):
+    # =========================
+    # WORD + GEMINI
+    # =========================
 
-        section, content = search_sections(question)
+    if any(
+        word in question_lower
+        for word in word_words
+    ):
+
+        section, content = search_sections(
+            question
+        )
 
         if section:
+
+            answer = generate_ai_answer(
+                question,
+                content,
+                f"Word Knowledge Base - {section}"
+            )
 
             return {
                 "source": "Word",
                 "section": section,
-                "content": content
+                "content": answer
             }
 
-  answer = generate_ai_answer(
-    question,
-    content,
-    f"Word Knowledge Base - {section}"
-)
+    # =========================
+    # NOTHING FOUND
+    # =========================
 
-return {
-    "source": "Word",
-    "section": section,
-    "content": answer
-}
+    return {
+        "source": "Unknown",
+        "message": (
+            "I could not find relevant information "
+            "in the KHT knowledge base."
+        )
+    }
+
 
 # =========================
 # FASTAPI APP
@@ -448,7 +582,9 @@ app.add_middleware(
 def home():
 
     return {
-        "message": "KHT AI Assistant backend is running!"
+        "message": (
+            "KHT AI Assistant backend is running!"
+        )
     }
 
 
