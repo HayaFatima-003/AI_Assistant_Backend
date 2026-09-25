@@ -307,7 +307,41 @@ def search_excel(question):
         return None
 
     return result
+# =========================
+# GEMINI AI ANSWER
+# =========================
 
+def generate_ai_answer(question, context, source):
+
+    prompt = f"""
+You are the KHT AI Assistant.
+
+Answer the user's question using ONLY the information provided
+in the knowledge-base context below.
+
+Do not invent facts.
+Do not add information that is not present in the context.
+If the context does not contain enough information, say:
+"I could not find enough information in the KHT knowledge base."
+
+Give a concise, professional answer.
+Use bullet points when they make the answer clearer.
+
+Source: {source}
+
+Knowledge-base context:
+{context}
+
+User question:
+{question}
+"""
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+
+    return response.text
 
 # =========================
 # MAIN BACKEND LOGIC
@@ -371,11 +405,17 @@ def ask_backend(question):
                 "content": content
             }
 
-    return {
-        "source": "Unknown",
-        "message": "I could not find relevant information."
-    }
+  answer = generate_ai_answer(
+    question,
+    content,
+    f"Word Knowledge Base - {section}"
+)
 
+return {
+    "source": "Word",
+    "section": section,
+    "content": answer
+}
 
 # =========================
 # FASTAPI APP
