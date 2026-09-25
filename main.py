@@ -3,7 +3,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from docx import Document
+import os
+from google import genai
 
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 
 # =========================
 # LOAD WORD KNOWLEDGE BASE
