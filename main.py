@@ -3,24 +3,24 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from docx import Document
 import os
-import re
 from google import genai
 
 
-# =========================
-# GEMINI CLIENT
-# =========================
+# =========================================================
+# GEMINI
+# =========================================================
 
 client = genai.Client(
     api_key=os.getenv("GEMINI_API_KEY")
 )
 
 
-# =========================
-# LOAD WORD KNOWLEDGE BASE
-# =========================
+# =========================================================
+# LOAD WORD DOCUMENT
+# =========================================================
 
 doc = Document("KHT Operation knowledge sample data.docx")
+
 
 sections = {
     "HSD Truck Loading": "",
@@ -32,7 +32,9 @@ sections = {
     "Emergency Procedures": ""
 }
 
+
 current_section = None
+
 
 for paragraph in doc.paragraphs:
 
@@ -63,16 +65,18 @@ for paragraph in doc.paragraphs:
         sections[current_section] += text + "\n"
 
 
-# =========================
-# LOAD EXCEL DATA
-# =========================
+# =========================================================
+# LOAD EXCEL
+# =========================================================
 
-excel_data = pd.read_excel("Permits Sample Data.xlsx")
+excel_data = pd.read_excel(
+    "Permits Sample Data.xlsx"
+)
 
 
-# =========================
-# WORD SEARCH
-# =========================
+# =========================================================
+# WORD SECTION SEARCH
+# =========================================================
 
 def search_sections(question):
 
@@ -162,11 +166,9 @@ def search_sections(question):
         ]
     }
 
-    # -------------------------
-    # FIND BEST SECTION
-    # -------------------------
 
     scores = {}
+
 
     for section, words in keywords.items():
 
@@ -179,136 +181,36 @@ def search_sections(question):
 
         scores[section] = score
 
+
     best_section = max(
         scores,
         key=scores.get
     )
 
+
     if scores[best_section] == 0:
+
         return None, None
+
+
+    # IMPORTANT:
+    # Send the COMPLETE relevant section to Gemini.
+    # Gemini will extract the exact answer.
 
     content = sections[best_section]
 
-    # -------------------------
-    # SPLIT INTO SENTENCES
-    # -------------------------
 
-    sentences = re.split(
-        r'(?<=[.!?])\s+',
-        content.strip()
-    )
-
-    # -------------------------
-    # REMOVE COMMON WORDS
-    # -------------------------
-
-    stop_words = {
-        "what",
-        "is",
-        "are",
-        "the",
-        "a",
-        "an",
-        "for",
-        "of",
-        "to",
-        "in",
-        "on",
-        "and",
-        "or",
-        "how",
-        "does",
-        "do",
-        "can",
-        "should",
-        "be",
-        "required",
-        "tell",
-        "me",
-        "please",
-        "about"
-    }
-
-    question_words = set(
-        re.findall(
-            r'\b[a-zA-Z0-9]+\b',
-            question_lower
-        )
-    )
-
-    question_words -= stop_words
-
-    # -------------------------
-    # SCORE SENTENCES
-    # -------------------------
-
-    scored_sentences = []
-
-    for sentence in sentences:
-
-        sentence_lower = sentence.lower()
-
-        sentence_words = set(
-            re.findall(
-                r'\b[a-zA-Z0-9]+\b',
-                sentence_lower
-            )
-        )
-
-        overlap = question_words.intersection(
-            sentence_words
-        )
-
-        score = len(overlap)
-
-        if score > 0:
-
-            scored_sentences.append(
-                (
-                    score,
-                    sentence.strip()
-                )
-            )
-
-    # -------------------------
-    # SORT
-    # -------------------------
-
-    scored_sentences.sort(
-        key=lambda x: x[0],
-        reverse=True
-    )
-
-    # -------------------------
-    # RETURN RELEVANT CONTENT
-    # -------------------------
-
-    if scored_sentences:
-
-        top_sentences = [
-            sentence
-            for score, sentence
-            in scored_sentences[:10]
-        ]
-
-        answer = " ".join(
-            top_sentences
-        )
-
-    else:
-
-        answer = content
-
-    return best_section, answer
+    return best_section, content
 
 
-# =========================
+# =========================================================
 # EXCEL SEARCH
-# =========================
+# =========================================================
 
 def search_excel(question):
 
     question_lower = question.lower()
+
 
     if "hot work" in question_lower:
 
@@ -322,6 +224,7 @@ def search_excel(question):
             )
         ]
 
+
     elif "cold work" in question_lower:
 
         result = excel_data[
@@ -333,6 +236,7 @@ def search_excel(question):
                 na=False
             )
         ]
+
 
     elif "icc" in question_lower:
 
@@ -347,6 +251,7 @@ def search_excel(question):
             )
         ]
 
+
     elif "vec" in question_lower:
 
         result = excel_data[
@@ -360,6 +265,7 @@ def search_excel(question):
             )
         ]
 
+
     elif "loading bay" in question_lower:
 
         result = excel_data[
@@ -371,6 +277,7 @@ def search_excel(question):
                 na=False
             )
         ]
+
 
     elif "workshop" in question_lower:
 
@@ -384,6 +291,7 @@ def search_excel(question):
             )
         ]
 
+
     elif "process area" in question_lower:
 
         result = excel_data[
@@ -396,16 +304,18 @@ def search_excel(question):
             )
         ]
 
+
     else:
 
         return None
 
+
     return result
 
 
-# =========================
-# GEMINI AI ANSWER
-# =========================
+# =========================================================
+# GEMINI ANSWER GENERATION
+# =========================================================
 
 def generate_ai_answer(
     question,
@@ -416,53 +326,67 @@ def generate_ai_answer(
     prompt = f"""
 You are the KHT AI Assistant.
 
-Answer the user's question using ONLY the
-information provided in the knowledge-base context.
+You are answering questions about a fictional/sample
+hydrocarbon terminal training knowledge base.
+
+Use ONLY the information provided in the context.
 
 Rules:
 
 1. Do not invent facts.
 2. Do not add information that is not present
-   in the provided context.
-3. If the context does not contain enough
-   information, say:
-   "I could not find enough information in the
-   KHT knowledge base."
+   in the context.
+3. Answer the user's exact question directly.
 4. Keep the answer concise and professional.
-5. Use bullet points when useful.
+5. Use bullet points when appropriate.
 6. Do not repeat the entire procedure unless
    the user specifically asks for the full procedure.
-7. Directly answer what the user asked.
-8. Treat the provided information as
-   training/sample information.
+7. If the requested information is not present
+   in the context, say:
+
+"I could not find enough information in the
+KHT knowledge base."
+
+8. Treat all information as training/sample
+   information and not as live operational instructions.
 
 Source:
 {source}
 
-Knowledge-base context:
+Knowledge Base Context:
 {context}
 
-User question:
+User Question:
 {question}
 """
 
+
     response = client.models.generate_content(
+
         model="gemini-3.8-flash",
+
         contents=prompt
     )
+
 
     return response.text
 
 
-# =========================
-# MAIN BACKEND LOGIC
-# =========================
+# =========================================================
+# MAIN QUESTION ROUTER
+# =========================================================
 
 def ask_backend(question):
 
     question_lower = question.lower()
 
+
+    # -----------------------------------------------------
+    # EXCEL QUESTIONS
+    # -----------------------------------------------------
+
     excel_words = [
+
         "how many",
         "count",
         "permit number",
@@ -473,9 +397,16 @@ def ask_backend(question):
         "issued",
         "closing date",
         "area"
+
     ]
 
+
+    # -----------------------------------------------------
+    # WORD QUESTIONS
+    # -----------------------------------------------------
+
     word_words = [
+
         "procedure",
         "how to",
         "steps",
@@ -487,12 +418,15 @@ def ask_backend(question):
         "equipment",
         "aops",
         "loading",
-        "decanting"
+        "decanting",
+        "earthing"
+
     ]
 
-    # =========================
-    # EXCEL
-    # =========================
+
+    # =====================================================
+    # EXCEL ROUTING
+    # =====================================================
 
     if any(
         word in question_lower
@@ -501,19 +435,25 @@ def ask_backend(question):
 
         result = search_excel(question)
 
+
         if result is not None:
 
             return {
+
                 "source": "Excel",
+
                 "records_found": len(result),
+
                 "data": result.head(10).to_dict(
                     orient="records"
                 )
+
             }
 
-    # =========================
-    # WORD + GEMINI
-    # =========================
+
+    # =====================================================
+    # WORD ROUTING
+    # =====================================================
 
     if any(
         word in question_lower
@@ -524,69 +464,97 @@ def ask_backend(question):
             question
         )
 
+
         if section:
 
             answer = generate_ai_answer(
+
                 question,
+
                 content,
+
                 f"Word Knowledge Base - {section}"
+
             )
 
+
             return {
+
                 "source": "Word",
+
                 "section": section,
+
                 "content": answer
+
             }
 
-    # =========================
+
+    # =====================================================
     # NOTHING FOUND
-    # =========================
+    # =====================================================
 
     return {
+
         "source": "Unknown",
+
         "message": (
             "I could not find relevant information "
             "in the KHT knowledge base."
         )
+
     }
 
 
-# =========================
-# FASTAPI APP
-# =========================
+# =========================================================
+# FASTAPI
+# =========================================================
 
 app = FastAPI(
+
     title="KHT AI Assistant",
+
     version="1.0"
+
 )
 
 
-# =========================
+# =========================================================
 # CORS
-# =========================
+# =========================================================
 
 app.add_middleware(
+
     CORSMiddleware,
+
     allow_origins=["*"],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"]
+
 )
 
 
-# =========================
-# ROUTES
-# =========================
+# =========================================================
+# HOME
+# =========================================================
 
 @app.get("/")
 def home():
 
     return {
-        "message": (
-            "KHT AI Assistant backend is running!"
-        )
+
+        "message":
+        "KHT AI Assistant backend is running!"
+
     }
 
+
+# =========================================================
+# ASK ENDPOINT
+# =========================================================
 
 @app.get("/ask")
 def ask(question: str):
