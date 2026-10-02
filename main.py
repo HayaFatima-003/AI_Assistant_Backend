@@ -1,309 +1,355 @@
+# ============================================================
+# KHT AI ASSISTANT - COLAB TEST
+# Gemini 3.5 Flash-Lite + KHT DOCX + Permit Excel
+# ============================================================
 
+from google import genai
+from docx import Document
+import pandas as pd
+from pathlib import Path
 import os
 import re
-from pathlib import Path
-
-import pandas as pd
-from docx import Document
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from google import genai
-from google.genai import types
 
 
 # ============================================================
-# SETTINGS
+# 1. GEMINI SETUP
 # ============================================================
 
-BASE_DIR = Path(__file__).resolve().parent
+api_key = input("Enter your NEW Gemini API key: ").strip()
+
+# Remove accidental spaces/newlines only
+api_key = api_key.strip()
+
+client = genai.Client(api_key=api_key)
+
+MODEL_NAME = "gemini-3.5-flash-lite"
+
+print("\nGemini client created.")
+print("Model:", MODEL_NAME)
+
+
+# ============================================================
+# 2. FILE PATHS
+# ============================================================
+
+BASE_DIR = Path("/content/KHT-AI-Backend")
 DATA_DIR = BASE_DIR / "data"
 
 DOCX_PATH = DATA_DIR / "KHT Operation knowledge sample data.docx"
 XLSX_PATH = DATA_DIR / "Permits Sample Data.xlsx"
 
-MODEL_NAME = "gemini-3.8-flash"
+print("\nChecking files...")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+print("DOCX:", DOCX_PATH)
+print("Exists:", DOCX_PATH.exists())
 
-if not GEMINI_API_KEY:
-    raise RuntimeError(
-        "GEMINI_API_KEY environment variable is missing."
-    )
-
-client = genai.Client(
-    api_key=GEMINI_API_KEY
-)
+print("Excel:", XLSX_PATH)
+print("Exists:", XLSX_PATH.exists())
 
 
 # ============================================================
-# LOAD WORD KNOWLEDGE
+# 3. LOAD WORD DOCUMENT
 # ============================================================
-
-document = Document(str(DOCX_PATH))
 
 word_sections = []
 
-current_title = "General KHT Knowledge"
-current_text = []
 
-for paragraph in document.paragraphs:
+def load_word_document():
 
-    text = paragraph.text.strip()
+    global word_sections
 
-    if not text:
-        continue
+    word_sections = []
 
-    style_name = paragraph.style.name.lower()
+    if not DOCX_PATH.exists():
+        print("\nERROR: Word file not found.")
+        return
 
-    is_heading = (
-        style_name.startswith("heading")
-        or (
-            len(text) < 100
-            and text.isupper()
-            and len(text.split()) <= 12
-        )
-    )
+    document = Document(DOCX_PATH)
 
-    if is_heading:
+    current_title = "General KHT Knowledge"
+    current_text = []
 
-        if current_text:
+    for paragraph in document.paragraphs:
 
-            word_sections.append({
-                "title": current_title,
-                "content": "\n".join(current_text)
-            })
+        text = paragraph.text.strip()
 
-        current_title = text
-        current_text = []
+        if not text:
+            continue
 
-    else:
+        # Detect section headings
+        if (
+            text.startswith("Operation ")
+            or text.startswith("General ")
+            or text.startswith("Emergency ")
+            or text.startswith("Basic ")
+            or text.startswith("Equipment ")
+            or text.startswith("Permit ")
+        ):
 
-        current_text.append(text)
+            if current_text:
+                word_sections.append({
+                    "title": current_title,
+                    "content": "\n".join(current_text)
+                })
 
+            current_title = text
+            current_text = []
 
-if current_text:
+        else:
+            current_text.append(text)
 
-    word_sections.append({
-        "title": current_title,
-        "content": "\n".join(current_text)
-    })
+    # Final section
+    if current_text:
+        word_sections.append({
+            "title": current_title,
+            "content": "\n".join(current_text)
+        })
 
-
-# ============================================================
-# LOAD EXCEL
-# ============================================================
-
-permit_df = pd.read_excel(
-    XLSX_PATH
-)
-
-permit_df.columns = [
-    str(col).strip()
-    for col in permit_df.columns
-]
-
-permit_df = permit_df.fillna("")
+    print("\nWord sections loaded:", len(word_sections))
 
 
 # ============================================================
-# NORMALIZATION
+# 4. LOAD EXCEL
 # ============================================================
 
-def normalize_text(text):
+permit_df = None
 
-    text = str(text).lower()
 
-    text = re.sub(
-        r"[^a-z0-9\s\-\/]",
-        " ",
-        text
-    )
+def load_excel():
 
-    text = re.sub(
+    global permit_df
+
+    if not XLSX_PATH.exists():
+        print("\nERROR: Excel file not found.")
+        return
+
+    permit_df = pd.read_excel(XLSX_PATH)
+
+    print("Excel rows loaded:", len(permit_df))
+    print("Excel columns:", list(permit_df.columns))
+
+
+# ============================================================
+# 5. NORMALIZE TEXT
+# ============================================================
+
+def normalize(text):
+
+    if text is None:
+        return ""
+
+    return re.sub(
         r"\s+",
         " ",
-        text
+        str(text).lower().strip()
     )
-
-    return text.strip()
 
 
 # ============================================================
-# WORD SEARCH
+# 6. SEARCH WORD DOCUMENT
 # ============================================================
 
 def search_word_sections(question, top_k=3):
 
-    q = normalize_text(question)
-
-    q_words = set(q.split())
-
-    scored = []
+    question = normalize(question)
 
     keyword_groups = {
 
         "ppe": [
             "ppe",
-            "personal protective",
+            "personal protective equipment",
+            "protective equipment",
             "helmet",
             "gloves",
-            "goggles"
+            "safety shoes",
+            "goggles",
+            "coverall"
         ],
 
         "loading": [
             "loading",
             "truck loading",
-            "hsd loading"
+            "hsd loading",
+            "truck",
+            "loading procedure"
         ],
 
         "decanting": [
             "decanting",
-            "decant"
+            "decant",
+            "hsd decanting"
+        ],
+
+        "aops": [
+            "aops",
+            "testing",
+            "aops testing"
         ],
 
         "permit": [
             "permit",
+            "ptw",
             "hot work",
             "cold work",
             "icc",
-            "vec"
+            "vec",
+            "certificate"
+        ],
+
+        "hse": [
+            "hse",
+            "safety",
+            "hazard",
+            "ppe"
+        ],
+
+        "equipment": [
+            "equipment",
+            "pump",
+            "valve",
+            "tank",
+            "pipeline"
         ],
 
         "emergency": [
             "emergency",
             "fire",
             "spill",
-            "evacuation"
-        ],
-
-        "aops": [
-            "aops",
-            "testing",
-            "live testing"
+            "leak",
+            "incident"
         ]
     }
 
+    scores = []
+
+    question_words = set(
+        word for word in question.split()
+        if len(word) > 2
+    )
+
     for section in word_sections:
 
-        title = section["title"]
-        content = section["content"]
-
-        combined = normalize_text(
-            title + " " + content
-        )
+        title = normalize(section["title"])
+        content = normalize(section["content"])
 
         score = 0
 
-        if q in combined:
-            score += 20
+        for keywords in keyword_groups.values():
 
-        section_words = set(combined.split())
+            for keyword in keywords:
 
-        overlap = q_words.intersection(
-            section_words
-        )
+                if keyword in question:
 
-        score += len(overlap) * 2
+                    if keyword in title:
+                        score += 8
 
-        for group_words in keyword_groups.values():
+                    if keyword in content:
+                        score += 3
 
-            q_has_group = any(
-                word in q
-                for word in group_words
-            )
+        content_words = set(content.split())
 
-            section_has_group = any(
-                word in combined
-                for word in group_words
-            )
+        overlap = question_words.intersection(content_words)
 
-            if q_has_group and section_has_group:
-                score += 8
+        score += len(overlap)
 
         if score > 0:
 
-            scored.append({
-                "score": score,
-                "title": title,
-                "content": content
-            })
+            scores.append(
+                (
+                    score,
+                    section["title"],
+                    section["content"]
+                )
+            )
 
-    scored.sort(
-        key=lambda x: x["score"],
-        reverse=True
+    scores.sort(
+        reverse=True,
+        key=lambda x: x[0]
     )
 
-    return scored[:top_k]
+    return scores[:top_k]
 
 
 # ============================================================
-# EXCEL SEARCH
+# 7. SEARCH EXCEL
 # ============================================================
 
 def search_excel(question, top_k=8):
 
-    q = normalize_text(question)
+    if permit_df is None:
+        return []
 
-    matches = []
+    question = normalize(question)
+
+    results = []
+
+    question_words = set(
+        word for word in question.split()
+        if len(word) > 2
+    )
+
+    important_terms = [
+        "hot work",
+        "cold work",
+        "permit",
+        "icc",
+        "vec",
+        "certificate",
+        "loading",
+        "decanting"
+    ]
 
     for _, row in permit_df.iterrows():
 
-        row_text = " ".join(
-            str(value)
-            for value in row.values
-        )
+        row_parts = []
 
-        normalized_row = normalize_text(
-            row_text
-        )
+        for column in permit_df.columns:
+
+            value = row[column]
+
+            if pd.notna(value):
+
+                row_parts.append(
+                    f"{column}: {value}"
+                )
+
+        row_text = " | ".join(row_parts)
+        normalized_row = normalize(row_text)
 
         score = 0
 
-        if q in normalized_row:
-            score += 15
+        for word in question_words:
 
-        q_words = set(q.split())
-        row_words = set(
-            normalized_row.split()
-        )
+            if word in normalized_row:
+                score += 1
 
-        score += len(
-            q_words.intersection(row_words)
-        )
+        for term in important_terms:
 
-        if "hot work" in q and "hot work" in normalized_row:
-            score += 10
-
-        if "cold work" in q and "cold work" in normalized_row:
-            score += 10
-
-        if "icc" in q and "icc" in normalized_row:
-            score += 10
-
-        if "vec" in q and "vec" in normalized_row:
-            score += 10
-
-        if "permit" in q and "permit" in normalized_row:
-            score += 3
+            if term in question and term in normalized_row:
+                score += 5
 
         if score > 0:
 
-            matches.append({
-                "score": score,
-                "row": row.astype(str).to_dict()
-            })
+            results.append(
+                (
+                    score,
+                    row_text
+                )
+            )
 
-    matches.sort(
-        key=lambda x: x["score"],
-        reverse=True
+    results.sort(
+        reverse=True,
+        key=lambda x: x[0]
     )
 
-    return matches[:top_k]
+    return [
+        result[1]
+        for result in results[:top_k]
+    ]
 
 
 # ============================================================
-# CONTEXT
+# 8. BUILD KHT CONTEXT
 # ============================================================
 
 def build_context(question):
@@ -320,235 +366,168 @@ def build_context(question):
 
     context_parts = []
 
-    for result in word_results:
+    # Word results
+    for score, title, content in word_results:
 
         context_parts.append(
-            f"""
-SOURCE TYPE: KHT Operation Knowledge
-SECTION: {result['title']}
-
-{result['content']}
-"""
+            f"SOURCE: {title}\n{content}"
         )
 
+    # Excel results
     if excel_results:
 
-        excel_text = []
-
-        for result in excel_results:
-
-            row = result["row"]
-
-            formatted = " | ".join(
-                f"{key}: {value}"
-                for key, value in row.items()
-                if str(value).strip()
-            )
-
-            excel_text.append(
-                formatted
-            )
-
         context_parts.append(
-            """
-SOURCE TYPE: KHT Permit Records
-DATA:
-
-""" + "\n".join(excel_text)
-        )
-
-    if not context_parts:
-
-        return (
-            "No directly relevant KHT information "
-            "was found in the available knowledge base."
+            "SOURCE: KHT Permit Database\n"
+            + "\n".join(excel_results)
         )
 
     return "\n\n".join(context_parts)
 
 
 # ============================================================
-# SYSTEM INSTRUCTION
+# 9. ASK GEMINI
 # ============================================================
 
-SYSTEM_INSTRUCTION = """
-You are KHT AI Assistant.
-
-You are an internal knowledge assistant for Karachi Hydrocarbon Terminal.
-
-Use ONLY the KHT knowledge and permit information supplied in the context.
-
-Rules:
-
-- Do not invent KHT procedures or requirements.
-- If the answer is not in the context, say so.
-- Keep answers concise and practical.
-- Use bullets when appropriate.
-- Do not expose API keys or internal code.
-- Training/sample information must not be presented as approved site procedure.
-- Safety-critical questions must be answered conservatively.
-- Mention the relevant source section when useful.
-"""
-
-
-# ============================================================
-# GEMINI FUNCTION
-# ============================================================
-
-def generate_answer(question):
-
-    context = build_context(question)
+def ask_gemini(question, context):
 
     prompt = f"""
-KHT USER QUESTION:
-{question}
+You are the KHT AI Assistant for Karachi Hydrocarbon Terminal.
 
-KHT KNOWLEDGE CONTEXT:
+Answer the user's question using ONLY the KHT information
+provided below.
+
+Rules:
+- Keep the answer concise and practical.
+- Do not invent procedures, permit numbers, dates, certificates,
+  equipment details, or safety requirements.
+- If the information is not available, say so clearly.
+- For simple questions, use short bullet points.
+- Mention the relevant source at the end.
+- This is a training/demo assistant. Approved site procedures
+  must always be verified before operational use.
+
+KHT INFORMATION:
+
 {context}
 
-Answer the question using the supplied KHT context.
+USER QUESTION:
 
-Keep the answer concise.
+{question}
 
-If the information is not available in the context, say:
-
-"I couldn't find this information in the available KHT knowledge base."
-
-At the end provide a short source label.
+ANSWER:
 """
+
+    # Remove problematic Unicode characters that can cause
+    # header/request encoding issues.
+    prompt = (
+        prompt
+        .replace("\u2014", "-")
+        .replace("\u2013", "-")
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+    )
 
     response = client.models.generate_content(
         model=MODEL_NAME,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            temperature=0.2,
-            max_output_tokens=500
-        )
+        contents=prompt
     )
 
-    return response.text.strip()
+    return response.text
 
 
 # ============================================================
-# FASTAPI
+# 10. LOAD EVERYTHING
 # ============================================================
 
-app = FastAPI(
-    title="KHT AI Assistant",
-    version="1.0"
-)
+print("\n" + "=" * 60)
+print("LOADING KHT KNOWLEDGE")
+print("=" * 60)
 
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+load_word_document()
+load_excel()
 
 
 # ============================================================
-# REQUEST MODEL
+# 11. TEST GEMINI
 # ============================================================
 
-class QuestionRequest(BaseModel):
+print("\n" + "=" * 60)
+print("TESTING GEMINI")
+print("=" * 60)
 
-    question: str
+try:
 
+    test_response = client.models.generate_content(
+        model=MODEL_NAME,
+        contents="Reply with exactly: KHT TEST OK"
+    )
 
-# ============================================================
-# ROOT
-# ============================================================
+    print("Gemini:", test_response.text)
 
-@app.get("/")
-def root():
+except Exception as e:
 
-    return {
-        "status": "online",
-        "assistant": "KHT AI Assistant",
-        "model": MODEL_NAME
-    }
-
-
-# ============================================================
-# HEALTH
-# ============================================================
-
-@app.get("/health")
-def health():
-
-    return {
-        "status": "healthy",
-        "word_sections": len(word_sections),
-        "permit_records": len(permit_df),
-        "model": MODEL_NAME
-    }
+    print("Gemini test FAILED:")
+    print(type(e).__name__)
+    print(str(e))
 
 
 # ============================================================
-# ASK
+# 12. TEST KHT QUESTION
 # ============================================================
 
-@app.post("/ask")
-def ask(request: QuestionRequest):
+print("\n" + "=" * 60)
+print("TESTING KHT QUESTION")
+print("=" * 60)
 
-    question = request.question.strip()
+question = "What PPE is required for HSD truck loading?"
 
-    if not question:
+context = build_context(question)
 
-        raise HTTPException(
-            status_code=400,
-            detail="Question cannot be empty."
-        )
+print("\nContext length:", len(context))
+
+if context:
+
+    print("\nRelevant KHT context found:")
+    print(context[:2500])
+
+    print("\n" + "=" * 60)
+    print("KHT AI ANSWER")
+    print("=" * 60)
 
     try:
 
-        answer = generate_answer(
-            question
-        )
-
-        word_results = search_word_sections(
+        answer = ask_gemini(
             question,
-            top_k=3
+            context
         )
 
-        excel_results = search_excel(
-            question,
-            top_k=8
-        )
-
-        sources = []
-
-        for result in word_results:
-
-            sources.append(
-                result["title"]
-            )
-
-        if excel_results:
-
-            sources.append(
-                "KHT Permit Records"
-            )
-
-        return {
-            "answer": answer,
-            "source": ", ".join(sources)
-                if sources
-                else "KHT Knowledge Base",
-            "records_found": (
-                len(word_results)
-                + len(excel_results)
-            )
-        }
+        print(answer)
 
     except Exception as e:
 
-        print("ERROR:", repr(e))
+        print("\nGemini answer FAILED:")
+        print(type(e).__name__)
+        print(str(e))
 
-        raise HTTPException(
-            status_code=500,
-            detail="The KHT AI Assistant could not process the request."
-        )
+else:
+
+    print("\nWARNING: No relevant KHT context found.")
+
+
+# ============================================================
+# 13. FINAL STATUS
+# ============================================================
+
+print("\n" + "=" * 60)
+print("FINAL STATUS")
+print("=" * 60)
+
+print("Gemini model:", MODEL_NAME)
+print("Word sections:", len(word_sections))
+print(
+    "Excel rows:",
+    len(permit_df) if permit_df is not None else 0
+)
+print("KHT backend logic test completed.")
