@@ -19,8 +19,8 @@ from google.genai import types
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-DOCX_PATH = DATA_DIR / "KHT_Operation_Knowledge.docx"
-XLSX_PATH = DATA_DIR / "KHT_Permits_Data.xlsx"
+DOCX_PATH = DATA_DIR / "KHT Operation knowledge sample data.docx"
+XLSX_PATH = DATA_DIR / "Permits Sample Data.xlsx"
 
 MODEL_NAME = "gemini-3.8-flash"
 
