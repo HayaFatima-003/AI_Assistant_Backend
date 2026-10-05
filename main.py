@@ -1,7 +1,6 @@
 import os
 import json
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from fastapi import FastAPI, File, Form, UploadFile
@@ -42,8 +41,6 @@ app = FastAPI(
 # ============================================================
 # CORS
 # ============================================================
-# Frontend and backend are deployed separately, so the backend
-# must allow requests from the frontend.
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,22 +90,36 @@ def extract_docx(file_path: Path) -> str:
                 parts.append(text)
 
         # Tables
-        for table_number, table in enumerate(document.tables, start=1):
+        for table_number, table in enumerate(
+            document.tables,
+            start=1
+        ):
 
-            parts.append(f"\n[TABLE {table_number}]")
+            parts.append(
+                f"\n[TABLE {table_number}]"
+            )
 
             for row in table.rows:
+
                 row_data = []
 
                 for cell in row.cells:
-                    row_data.append(cell.text.strip())
+                    row_data.append(
+                        cell.text.strip()
+                    )
 
-                parts.append(" | ".join(row_data))
+                parts.append(
+                    " | ".join(row_data)
+                )
 
         return "\n".join(parts)
 
     except Exception as e:
-        return f"[ERROR READING DOCX: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING DOCX: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_excel(file_path: Path) -> str:
@@ -122,7 +133,9 @@ def extract_excel(file_path: Path) -> str:
 
         for sheet_name in excel_file.sheet_names:
 
-            parts.append(f"\n[SHEET: {sheet_name}]")
+            parts.append(
+                f"\n[SHEET: {sheet_name}]"
+            )
 
             df = pd.read_excel(
                 file_path,
@@ -130,23 +143,29 @@ def extract_excel(file_path: Path) -> str:
             )
 
             if df.empty:
-                parts.append("[EMPTY SHEET]")
+
+                parts.append(
+                    "[EMPTY SHEET]"
+                )
+
                 continue
 
             # Convert NaN to blank
             df = df.fillna("")
 
-            # Convert dataframe into readable text
+            # Convert dataframe to readable text
             parts.append(
-                df.to_string(
-                    index=False
-                )
+                df.to_string(index=False)
             )
 
         return "\n".join(parts)
 
     except Exception as e:
-        return f"[ERROR READING EXCEL: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING EXCEL: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_csv(file_path: Path) -> str:
@@ -161,7 +180,11 @@ def extract_csv(file_path: Path) -> str:
         return df.to_string(index=False)
 
     except Exception as e:
-        return f"[ERROR READING CSV: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING CSV: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_pdf(file_path: Path) -> str:
@@ -173,16 +196,21 @@ def extract_pdf(file_path: Path) -> str:
 
         parts = []
 
-        for page_number, page in enumerate(reader.pages, start=1):
+        for page_number, page in enumerate(
+            reader.pages,
+            start=1
+        ):
 
             text = page.extract_text()
 
             if text:
+
                 parts.append(
                     f"\n[PAGE {page_number}]\n{text}"
                 )
 
         if not parts:
+
             return (
                 f"[PDF CONTAINS NO EXTRACTABLE TEXT: "
                 f"{file_path.name}]"
@@ -191,7 +219,11 @@ def extract_pdf(file_path: Path) -> str:
         return "\n".join(parts)
 
     except Exception as e:
-        return f"[ERROR READING PDF: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING PDF: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_pptx(file_path: Path) -> str:
@@ -224,7 +256,11 @@ def extract_pptx(file_path: Path) -> str:
         return "\n".join(parts)
 
     except Exception as e:
-        return f"[ERROR READING PPTX: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING PPTX: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_json(file_path: Path) -> str:
@@ -247,7 +283,11 @@ def extract_json(file_path: Path) -> str:
         )
 
     except Exception as e:
-        return f"[ERROR READING JSON: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING JSON: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 def extract_text_file(file_path: Path) -> str:
@@ -265,7 +305,11 @@ def extract_text_file(file_path: Path) -> str:
             return f.read()
 
     except Exception as e:
-        return f"[ERROR READING TEXT FILE: {file_path.name}] {str(e)}"
+
+        return (
+            f"[ERROR READING TEXT FILE: "
+            f"{file_path.name}] {str(e)}"
+        )
 
 
 # ============================================================
@@ -274,8 +318,8 @@ def extract_text_file(file_path: Path) -> str:
 
 def extract_file(file_path: Path) -> str:
     """
-    Automatically determine how to read a file based on
-    its extension.
+    Automatically determine how to read a file
+    based on its extension.
     """
 
     extension = file_path.suffix.lower()
@@ -298,7 +342,13 @@ def extract_file(file_path: Path) -> str:
     elif extension == ".json":
         return extract_json(file_path)
 
-    elif extension in {".txt", ".md", ".html", ".htm"}:
+    elif extension in {
+        ".txt",
+        ".md",
+        ".html",
+        ".htm"
+    }:
+
         return extract_text_file(file_path)
 
     else:
@@ -311,20 +361,11 @@ def extract_file(file_path: Path) -> str:
 
 def load_all_kht_documents() -> str:
     """
-    Scan the entire data folder recursively and read every
-    supported document.
+    Scan the entire data folder recursively and read
+    every supported document.
 
-    You do NOT need to add filenames here.
-
-    Example:
-
-    data/
-        Tank Details.xlsx
-        Pumps.xlsx
-        SOP.docx
-        Emergency.pdf
-
-    All of them will automatically be loaded.
+    Any supported file placed inside data/ will
+    automatically be included.
     """
 
     if not DATA_DIR.exists():
@@ -340,8 +381,11 @@ def load_all_kht_documents() -> str:
         [
             file
             for file in DATA_DIR.rglob("*")
-            if file.is_file()
-            and file.suffix.lower() in SUPPORTED_EXTENSIONS
+            if (
+                file.is_file()
+                and file.suffix.lower()
+                in SUPPORTED_EXTENSIONS
+            )
         ]
     )
 
@@ -363,7 +407,9 @@ def load_all_kht_documents() -> str:
 
         if extracted_text.strip():
 
-            relative_path = file_path.relative_to(DATA_DIR)
+            relative_path = (
+                file_path.relative_to(DATA_DIR)
+            )
 
             all_documents.append(
                 f"""
@@ -394,14 +440,15 @@ END DOCUMENT: {relative_path}
 # ============================================================
 
 def get_document_list():
-    """Return the list of supported documents."""
 
     if not DATA_DIR.exists():
         return []
 
     documents = []
 
-    for file_path in sorted(DATA_DIR.rglob("*")):
+    for file_path in sorted(
+        DATA_DIR.rglob("*")
+    ):
 
         if (
             file_path.is_file()
@@ -410,13 +457,17 @@ def get_document_list():
         ):
 
             try:
-                relative_path = file_path.relative_to(DATA_DIR)
+
+                relative_path = (
+                    file_path.relative_to(DATA_DIR)
+                )
 
                 documents.append(
                     str(relative_path)
                 )
 
             except Exception:
+
                 documents.append(
                     file_path.name
                 )
@@ -441,37 +492,34 @@ def ask_gemini(
             "variable in Render."
         )
 
-prompt = f"""
+    # --------------------------------------------------------
+    # AI INSTRUCTIONS
+    # --------------------------------------------------------
+
+    prompt = f"""
 You are the KHT AI Assistant.
 
-Answer questions naturally, clearly, and in a friendly, helpful tone.
+Answer questions naturally, clearly, and in a friendly,
+helpful tone.
 
-Use the provided KHT information whenever the question is related to KHT, its operations, equipment, products, procedures, safety, or other site-specific details.
-For general questions, use your own knowledge and explain the topic normally.
-If a KHT-specific detail is not available in the provided information, do not make it up.
+Use the provided KHT information whenever the question is
+related to KHT, its operations, equipment, products,
+procedures, safety, or other site-specific details.
+
+For general questions, use your own knowledge and explain
+the topic normally.
+
+If a KHT-specific detail is not available in the provided
+information, do not make it up.
+
+You can explain concepts, define terms, summarize information,
+and structure answers naturally.
 
 KHT Information:
 {knowledge}
 
 User Question:
 {question}
-"""
-
-------------------------------------------------------------
-KHT KNOWLEDGE BASE
-------------------------------------------------------------
-
-{knowledge}
-
-------------------------------------------------------------
-USER QUESTION
-------------------------------------------------------------
-
-{question}
-
-------------------------------------------------------------
-ANSWER
-------------------------------------------------------------
 """
 
     try:
@@ -524,7 +572,8 @@ def startup_event():
     documents = get_document_list()
 
     print(
-        f"Supported documents found: {len(documents)}"
+        f"Supported documents found: "
+        f"{len(documents)}"
     )
 
     for document in documents:
@@ -558,7 +607,9 @@ def health_check():
     return {
         "status": "online",
         "service": "KHT AI Assistant Backend",
-        "gemini_configured": bool(GEMINI_API_KEY),
+        "gemini_configured": bool(
+            GEMINI_API_KEY
+        ),
         "documents_loaded": len(
             get_document_list()
         )
@@ -648,13 +699,19 @@ async def ask_with_file(
             }
         )
 
+    temporary_file = None
+
     try:
 
-        # Read uploaded file into memory.
-        # It is NOT permanently saved into GitHub/data/.
+        # ----------------------------------------------------
+        # Read uploaded file
+        # ----------------------------------------------------
+
         file_bytes = await file.read()
 
-        temporary_directory = BASE_DIR / "_temp_uploads"
+        temporary_directory = (
+            BASE_DIR / "_temp_uploads"
+        )
 
         temporary_directory.mkdir(
             exist_ok=True
@@ -677,24 +734,38 @@ async def ask_with_file(
             f"{file.filename}"
         )
 
+        # ----------------------------------------------------
+        # Extract uploaded file
+        # ----------------------------------------------------
+
         uploaded_content = extract_file(
             temporary_file
         )
 
-        # Remove temporary file after extraction
+        # ----------------------------------------------------
+        # Remove temporary file
+        # ----------------------------------------------------
+
         try:
 
             temporary_file.unlink()
 
         except Exception:
+
             pass
 
+        # ----------------------------------------------------
         # Load permanent KHT knowledge
+        # ----------------------------------------------------
+
         permanent_knowledge = (
             load_all_kht_documents()
         )
 
-        # Combine permanent and uploaded knowledge
+        # ----------------------------------------------------
+        # Combine both sources
+        # ----------------------------------------------------
+
         combined_knowledge = f"""
 ============================================================
 PERMANENT KHT KNOWLEDGE BASE
@@ -716,6 +787,10 @@ END TEMPORARY DOCUMENT
 ============================================================
 """
 
+        # ----------------------------------------------------
+        # Ask Gemini
+        # ----------------------------------------------------
+
         answer = ask_gemini(
             question,
             combined_knowledge
@@ -733,11 +808,20 @@ END TEMPORARY DOCUMENT
             f"Upload processing error: {repr(e)}"
         )
 
+        # Try to clean up if something failed
+        if temporary_file:
+
+            try:
+                temporary_file.unlink()
+            except Exception:
+                pass
+
         return JSONResponse(
             status_code=500,
             content={
                 "error": (
-                    "Could not process the uploaded file."
+                    "Could not process the "
+                    "uploaded file."
                 )
             }
         )
