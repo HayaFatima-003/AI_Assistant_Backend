@@ -1,7 +1,13 @@
 fastapi
 uvicorn
-pandas==2.2.3
+python-multipart
+
+pandas
 openpyxl
+xlrd
+
 python-docx
+pypdf
+python-pptx
+
 google-genai
-pydantic
